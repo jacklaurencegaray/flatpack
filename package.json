@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "babel-traverse": "^6.26.0"
+  }
+}
