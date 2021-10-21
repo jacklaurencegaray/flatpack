@@ -1,71 +1,72 @@
-const fs = require("fs")
-const babylon = require("babylon")
-const traverse = require("babel-traverse").default
-const path = require("path")
-const babel = require("babel-core")
+const fs = require("fs");
+const babylon = require("babylon");
+const traverse = require("babel-traverse").default;
+const path = require("path");
+const babel = require("babel-core");
+const UglifyJs = require("uglify-js");
 
-let ID = 0
+let ID = 0;
 
 // Take path to a file and extract its dependencies
 function createAsset(filename) {
- const content = fs.readFileSync(filename, "utf-8")
+  const content = fs.readFileSync(filename, "utf-8");
 
- const ast = babylon.parse(content, { sourceType: "module" })
+  const ast = babylon.parse(content, { sourceType: "module" });
 
- const dependencies = []
+  const dependencies = [];
 
- traverse(ast, {
-  ImportDeclaration: ({ node }) => {
-   dependencies.push(node.source.value)
-  },
- })
+  traverse(ast, {
+    ImportDeclaration: ({ node }) => {
+      dependencies.push(node.source.value);
+    },
+  });
 
- const id = ID++
- const { code } = babel.transformFromAst(ast, null, {
-  presets: ["env"],
- })
+  const id = ID++;
+  const { code } = babel.transformFromAst(ast, null, {
+    presets: ["env"],
+  });
 
- return {
-  id,
-  filename,
-  dependencies,
-  code,
- }
+  return {
+    id,
+    filename,
+    dependencies,
+    code: UglifyJs.minify(code).code,
+  };
 }
 
 function createGraph(entry) {
- const mainAsset = createAsset(entry)
+  const mainAsset = createAsset(entry);
 
- const queue = [mainAsset]
+  const queue = [mainAsset];
 
- for (const asset of queue) {
-  const dirname = path.dirname(asset.filename)
-  asset.mapping = {}
+  for (const asset of queue) {
+    const dirname = path.dirname(asset.filename);
+    asset.mapping = {};
 
-  asset.dependencies.forEach((relativePath) => {
-   const absolutePath = path.join(dirname, relativePath)
-   const child = createAsset(absolutePath)
-   asset.mapping[relativePath] = child.id
-   queue.push(child)
-  })
- }
- return queue
+    asset.dependencies.forEach((relativePath) => {
+      const absolutePath = path.join(dirname, relativePath);
+      const child = createAsset(absolutePath);
+      asset.mapping[relativePath] = child.id;
+      queue.push(child);
+    });
+  }
+  return queue;
 }
 
 function bundle(graph) {
- let modules = ""
+  let modules = "";
 
- graph.forEach(
-  (mod) =>
-   (modules += `${mod.id}: [
+  graph.forEach(
+    (mod) =>
+      (modules += `${mod.id}: [
      function (require, module, exports) {
         ${mod.code}
      },
      ${JSON.stringify(mod.mapping)}
     ],`)
- )
+  );
 
- const result = `
+  const result = UglifyJs.minify(`
         (function(modules) {
             function require(id) {
                const [fn, mapping] = modules[id];
@@ -83,11 +84,11 @@ function bundle(graph) {
 
             require(0);
         })({${modules}})
-    `
+    `).code;
 
- return result
+  return result;
 }
 
-const graph = createGraph("./src/entry.js")
-const result = bundle(graph)
-console.log(result)
+const graph = createGraph("./src/entry.js");
+const result = bundle(graph);
+console.log(result);
