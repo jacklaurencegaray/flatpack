@@ -4,12 +4,36 @@ const traverse = require("babel-traverse").default;
 const path = require("path");
 const babel = require("babel-core");
 const UglifyJs = require("uglify-js");
+const { fileExtensionRegExp } = require("./src/constants.js");
 
 let ID = 0;
 
+const plugins = [(code) => UglifyJs.minify(code).code];
+
+const fileExtensionPrecedence = ["ts", "js"];
+
+function resolveFileNamesWithNoExtension(fileName) {
+  const fileExtensionMatch = fileName.match(fileExtensionRegExp);
+  let resolvedFileName = fileName; // fileNameByDefault
+  if (!fileExtensionMatch) {
+    for (let extension of fileExtensionPrecedence) {
+      const probableFilename = `${fileName}.${extension}`;
+      if (fs.existsSync(probableFilename)) {
+        resolvedFileName = probableFilename;
+        break;
+      }
+    }
+  }
+  if (!fileExtensionMatch && resolvedFileName === fileName)
+    throw new Error(`File not found: ${fileName}`);
+  return resolvedFileName;
+}
+
 // Take path to a file and extract its dependencies
-function createAsset(filename) {
-  const content = fs.readFileSync(filename, "utf-8");
+function createAsset(fileName) {
+  const resolvedFileName = resolveFileNamesWithNoExtension(fileName);
+
+  const content = fs.readFileSync(resolvedFileName, "utf-8");
 
   const ast = babylon.parse(content, { sourceType: "module" });
 
@@ -28,9 +52,12 @@ function createAsset(filename) {
 
   return {
     id,
-    filename,
+    fileName,
     dependencies,
-    code: UglifyJs.minify(code).code,
+    code: plugins.reduce(
+      (finalCode, currentPlugin) => currentPlugin(finalCode),
+      code
+    ),
   };
 }
 
@@ -40,7 +67,7 @@ function createGraph(entry) {
   const queue = [mainAsset];
 
   for (const asset of queue) {
-    const dirname = path.dirname(asset.filename);
+    const dirname = path.dirname(asset.fileName);
     asset.mapping = {};
 
     asset.dependencies.forEach((relativePath) => {
@@ -89,6 +116,6 @@ function bundle(graph) {
   return result;
 }
 
-const graph = createGraph("./src/entry.js");
+const graph = createGraph("./src/entry");
 const result = bundle(graph);
 console.log(result);
