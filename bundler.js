@@ -14,7 +14,7 @@ const fileExtensionPrecedence = ["ts", "js"];
 
 function resolveFileNamesWithNoExtension(fileName) {
   const fileExtensionMatch = fileName.match(fileExtensionRegExp);
-  let resolvedFileName = fileName; // fileNameByDefault
+  let resolvedFileName = fileName;
   if (!fileExtensionMatch) {
     for (let extension of fileExtensionPrecedence) {
       const probableFilename = `${fileName}.${extension}`;
